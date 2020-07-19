@@ -1,3 +1,10 @@
+# PandoraNetwork-eccrypto
+
+PandoraNetwork uses a modified eccrypto namely:
+
+1. encrypt & decrypt uses an array [ iv, ephemPublicKey, ciphertext, mac ] instead of an object { iv, ephemPublicKey, ciphertext, mac }
+2. sign & verify are both sync instead of async
+
 # eccrypto [![Build Status](https://travis-ci.org/bitchan/eccrypto.svg?branch=master)](https://travis-ci.org/bitchan/eccrypto)
 
 [![NPM](https://nodei.co/npm/eccrypto.png)](https://www.npmjs.com/package/eccrypto)
