@@ -135,15 +135,12 @@ var getPublicCompressed = exports.getPublicCompressed = function(privateKey) { /
  * signature and rejects on bad key or message.
  */
 exports.sign = function(privateKey, msg) {
-  return new promise(function(resolve) {
     assert(privateKey.length === 32, "Bad private key");
     assert(isValidPrivateKey(privateKey), "Bad private key");
     assert(msg.length > 0, "Message should not be empty");
     assert(msg.length <= 32, "Message is too long");
     msg = pad32(msg);
-    var sig = secp256k1.sign(msg, privateKey).signature;
-    resolve(secp256k1.signatureExport(sig));
-  });
+    return secp256k1.sign(msg, privateKey).signature;
 };
 
 /**
@@ -155,17 +152,13 @@ exports.sign = function(privateKey, msg) {
  * and rejects on bad key or signature.
  */
 exports.verify = function(publicKey, msg, sig) {
-  return new promise(function(resolve, reject) {
+
     assert(msg.length > 0, "Message should not be empty");
     assert(msg.length <= 32, "Message is too long");
     msg = pad32(msg);
-    sig = secp256k1.signatureImport(sig);
-    if (secp256k1.verify(msg, sig, publicKey)) {
-     resolve(null);
-    } else {
-     reject(new Error("Bad signature"));
-    }
-  });
+    
+    return secp256k1.verify(msg, sig, publicKey);
+
 };
 
 /**
@@ -223,12 +216,7 @@ exports.encrypt = function(publicKeyTo, msg, opts) {
     var ciphertext = aes256CbcEncrypt(iv, encryptionKey, msg);
     var dataToMac = Buffer.concat([iv, ephemPublicKey, ciphertext]);
     var mac = Buffer.from(hmacSha256(macKey, dataToMac));
-    return {
-      iv: iv,
-      ephemPublicKey: ephemPublicKey,
-      ciphertext: ciphertext,
-      mac: mac,
-    };
+    return [ iv, ephemPublicKey, ciphertext, mac ]
   });
 };
 
@@ -241,18 +229,18 @@ exports.encrypt = function(publicKeyTo, msg, opts) {
  * plaintext on successful decryption and rejects on failure.
  */
 exports.decrypt = function(privateKey, opts) {
-  return derive(privateKey, opts.ephemPublicKey).then(function(Px) {
+  return derive(privateKey, opts[1] ).then(function(Px) {
     assert(privateKey.length === 32, "Bad private key");
     assert(isValidPrivateKey(privateKey), "Bad private key");
     var hash = sha512(Px);
     var encryptionKey = hash.slice(0, 32);
     var macKey = hash.slice(32);
     var dataToMac = Buffer.concat([
-      opts.iv,
-      opts.ephemPublicKey,
-      opts.ciphertext
+      opts[0],
+      opts[1],
+      opts[2]
     ]);
     var realMac = hmacSha256(macKey, dataToMac);
-    assert(equalConstTime(opts.mac, realMac), "Bad MAC"); return aes256CbcDecrypt(opts.iv, encryptionKey, opts.ciphertext);
+    assert(equalConstTime(opts[3], realMac), "Bad MAC"); return aes256CbcDecrypt(opts[0], encryptionKey, opts[2]);
   });
 };

@@ -152,17 +152,28 @@ var getPublicCompressed = exports.getPublicCompressed = function(privateKey) { /
 // because of the WebCryptoAPI (see
 // <http://caniuse.com/#feat=cryptography>).
 exports.sign = function(privateKey, msg) {
-  return new Promise(function(resolve) {
     assert(privateKey.length === 32, "Bad private key");
     assert(isValidPrivateKey(privateKey), "Bad private key");
     assert(msg.length > 0, "Message should not be empty");
     assert(msg.length <= 32, "Message is too long");
-    resolve(Buffer.from(ec.sign(msg, privateKey, {canonical: true}).toDER()));
-  });
+
+    const sign = ec.sign(msg, privateKey, {canonical: true});
+    return Buffer.concat ([
+      sign.r.toArray(),
+      sign.s.toArray(),
+    ]);
 };
 
 exports.verify = function(publicKey, msg, sig) {
-  return new Promise(function(resolve, reject) {
+
+    const r = Buffer.alloc(32);
+    sig.copy( r, 0, 0, 32);
+    
+    const s = Buffer.alloc(32);
+    sig.copy( s, 0, 32, 64);
+    
+    sig = {r, s};
+
     assert(publicKey.length === 65 || publicKey.length === 33, "Bad public key");
     if (publicKey.length === 65)
     {
@@ -174,12 +185,9 @@ exports.verify = function(publicKey, msg, sig) {
     }
     assert(msg.length > 0, "Message should not be empty");
     assert(msg.length <= 32, "Message is too long");
-    if (ec.verify(msg, sig, publicKey)) {
-      resolve(null);
-    } else {
-      reject(new Error("Bad signature"));
-    }
-  });
+    
+    return ec.verify(msg, sig, publicKey);
+    
 };
 
 var derive = exports.derive = function(privateKeyA, publicKeyB) {
@@ -229,32 +237,27 @@ exports.encrypt = function(publicKeyTo, msg, opts) {
     var dataToMac = Buffer.concat([iv, ephemPublicKey, ciphertext]);
     return hmacSha256Sign(macKey, dataToMac);
   }).then(function(mac) {
-    return {
-      iv: iv,
-      ephemPublicKey: ephemPublicKey,
-      ciphertext: ciphertext,
-      mac: mac,
-    };
+    return [ iv, ephemPublicKey, ciphertext, mac ]
   });
 };
 
 exports.decrypt = function(privateKey, opts) {
   // Tmp variable to save context from flat promises;
   var encryptionKey;
-  return derive(privateKey, opts.ephemPublicKey).then(function(Px) {
+  return derive(privateKey, opts[1]).then(function(Px) {
     return sha512(Px);
   }).then(function(hash) {
     encryptionKey = hash.slice(0, 32);
     var macKey = hash.slice(32);
     var dataToMac = Buffer.concat([
-      opts.iv,
-      opts.ephemPublicKey,
-      opts.ciphertext
+      opts[0],
+      opts[1],
+      opts[2]
     ]);
-    return hmacSha256Verify(macKey, dataToMac, opts.mac);
+    return hmacSha256Verify(macKey, dataToMac, opts[3]);
   }).then(function(macGood) {
     assert(macGood, "Bad MAC");
-    return aesCbcDecrypt(opts.iv, encryptionKey, opts.ciphertext);
+    return aesCbcDecrypt(opts[0], encryptionKey, opts[2]);
   }).then(function(msg) {
     return Buffer.from(new Uint8Array(msg));
   });
